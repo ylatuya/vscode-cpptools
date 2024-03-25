@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { DocumentFilter } from 'vscode-languageclient';
+import { DocumentFilter, Range } from 'vscode-languageclient';
 import * as nls from 'vscode-nls';
 import { TargetPopulation } from 'vscode-tas-client';
 import * as which from "which";
@@ -355,17 +355,6 @@ export function defaultExePath(): string {
     return isWindows ? exePath + '.exe' : exePath;
 }
 
-export function findExePathInArgs(args: string[]): string | undefined {
-    const exePath: string | undefined = args.find((arg: string, index: number) => arg.includes(".exe") || (index > 0 && args[index - 1] === "-o"));
-    if (exePath?.startsWith("/Fe")) {
-        return exePath.substring(3);
-    }
-    if (exePath?.toLowerCase().startsWith("/out:")) {
-        return exePath.substring(5);
-    }
-    return exePath;
-}
-
 // Pass in 'arrayResults' if a string[] result is possible and a delimited string result is undesirable.
 // The string[] result will be copied into 'arrayResults'.
 export function resolveVariables(input: string | undefined, additionalEnvironment?: Record<string, string | string[]>, arrayResults?: string[]): string {
@@ -382,7 +371,7 @@ export function resolveVariables(input: string | undefined, additionalEnvironmen
     }
 
     // Replace environment and configuration variables.
-    const regexp: () => RegExp = () => /\$\{((env|config|workspaceFolder|file|fileDirname|fileBasenameNoExtension|execPath|pathSeparator)(\.|:))?(.*?)\}/g;
+    const regexp: () => RegExp = () => /\$\{((env|config|workspaceFolder)(\.|:))?(.*?)\}/g;
     let ret: string = input;
     const cycleCache = new Set<string>();
     while (!cycleCache.has(ret)) {
@@ -677,6 +666,22 @@ export function deleteFile(filePath: string): Promise<void> {
     });
 }
 
+export function deleteDirectory(directoryPath: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        if (fs.existsSync(directoryPath)) {
+            fs.rmdir(directoryPath, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        } else {
+            resolve();
+        }
+    });
+}
+
 export function getReadmeMessage(): string {
     const readmePath: string = getExtensionFilePath("README.md");
     const readmeMessage: string = localize("refer.read.me", "Please refer to {0} for troubleshooting information. Issues can be created at {1}", readmePath, "https://github.com/Microsoft/vscode-cpptools/issues");
@@ -736,14 +741,16 @@ export interface ProcessReturnType {
     output: string;
 }
 
-export async function spawnChildProcess(program: string, args: string[] = [], continueOn?: string, cancellationToken?: vscode.CancellationToken): Promise<ProcessReturnType> {
+export async function spawnChildProcess(program: string, args: string[] = [], continueOn?: string, skipLogging?: boolean, cancellationToken?: vscode.CancellationToken): Promise<ProcessReturnType> {
     // Do not use CppSettings to avoid circular require()
-    const settings: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration("C_Cpp", null);
-    const loggingLevel: string | undefined = settings.get<string>("loggingLevel");
-    if (loggingLevel === "Information" || loggingLevel === "Debug") {
-        getOutputChannelLogger().appendLine(`$ ${program} ${args.join(' ')}`);
+    if (skipLogging === undefined || !skipLogging) {
+        const settings: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration("C_Cpp", null);
+        const loggingLevel: string | undefined = settings.get<string>("loggingLevel");
+        if (loggingLevel === "Information" || loggingLevel === "Debug") {
+            getOutputChannelLogger().appendLine(`$ ${program} ${args.join(' ')}`);
+        }
     }
-    const programOutput: ProcessOutput = await spawnChildProcessImpl(program, args, continueOn, cancellationToken);
+    const programOutput: ProcessOutput = await spawnChildProcessImpl(program, args, continueOn, skipLogging, cancellationToken);
     const exitCode: number | NodeJS.Signals | undefined = programOutput.exitCode;
     if (programOutput.exitCode) {
         return { succeeded: false, exitCode, output: programOutput.stderr || programOutput.stdout || localize('process.exited', 'Process exited with code {0}', exitCode) };
@@ -765,12 +772,12 @@ interface ProcessOutput {
     stderr: string;
 }
 
-async function spawnChildProcessImpl(program: string, args: string[], continueOn?: string, cancellationToken?: vscode.CancellationToken): Promise<ProcessOutput> {
+async function spawnChildProcessImpl(program: string, args: string[], continueOn?: string, skipLogging?: boolean, cancellationToken?: vscode.CancellationToken): Promise<ProcessOutput> {
     const result = new ManualPromise<ProcessOutput>();
 
     // Do not use CppSettings to avoid circular require()
     const settings: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration("C_Cpp", null);
-    const loggingLevel: string | undefined = settings.get<string>("loggingLevel");
+    const loggingLevel: string | undefined = (skipLogging === undefined || !skipLogging) ? settings.get<string>("loggingLevel") : "None";
 
     let proc: child_process.ChildProcess;
     if (await isExecutable(program)) {
@@ -1318,7 +1325,7 @@ export function getCacheStoragePath(): string {
             defaultCachePath = "vscode-cpptools/";
             pathEnvironmentVariable = process.env.XDG_CACHE_HOME;
             if (!pathEnvironmentVariable) {
-                pathEnvironmentVariable = os.homedir();
+                pathEnvironmentVariable = path.join(os.homedir(), ".cache");
             }
             break;
     }
@@ -1360,25 +1367,55 @@ export function sequentialResolve<T>(items: T[], promiseBuilder: (item: T) => Pr
     }, Promise.resolve());
 }
 
-export function normalizeArg(arg: string): string {
-    arg = arg.trim();
-    // Check if the arg is enclosed in backtick,
-    // or includes unescaped double-quotes (or single-quotes on Windows),
-    // or includes unescaped single-quotes on mac and linux.
-    if (/^`.*`$/g.test(arg) || /.*[^\\]".*/g.test(arg) ||
-        (process.platform.includes("win") && /.*[^\\]'.*/g.test(arg)) ||
-        (!process.platform.includes("win") && /.*[^\\]'.*/g.test(arg))) {
-        return arg;
+export function quoteArgument(argument: string): string {
+    // Return the argument as is if it's empty
+    if (!argument) {
+        return argument;
     }
-    // The special character double-quote is already escaped in the arg.
-    const unescapedSpaces: string | undefined = arg.split('').find((char, index) => index > 0 && char === " " && arg[index - 1] !== "\\");
-    if (!unescapedSpaces && !process.platform.includes("win")) {
-        return arg;
-    } else if (arg.includes(" ")) {
-        arg = arg.replace(/\\\s/g, " ");
-        return "\"" + arg + "\"";
+
+    if (os.platform() === "win32") {
+        // Windows-style quoting logic
+        if (!/[\s\t\n\v\"\\&%^]/.test(argument)) {
+            return argument;
+        }
+
+        let quotedArgument = '"';
+        let backslashCount = 0;
+
+        for (const char of argument) {
+            if (char === '\\') {
+                backslashCount++;
+            } else {
+                if (char === '"') {
+                    quotedArgument += '\\'.repeat(backslashCount * 2 + 1);
+                } else {
+                    quotedArgument += '\\'.repeat(backslashCount);
+                }
+                quotedArgument += char;
+                backslashCount = 0;
+            }
+        }
+
+        quotedArgument += '\\'.repeat(backslashCount * 2);
+        quotedArgument += '"';
+        return quotedArgument;
     } else {
-        return arg;
+        // Unix-style quoting logic
+        if (!/[\s\t\n\v\"'\\$`|;&(){}<>*?!\[\]~^#%]/.test(argument)) {
+            return argument;
+        }
+
+        let quotedArgument = "'";
+        for (const c of argument) {
+            if (c === "'") {
+                quotedArgument += "'\\''";
+            } else {
+                quotedArgument += c;
+            }
+        }
+
+        quotedArgument += "'";
+        return quotedArgument;
     }
 }
 
@@ -1545,4 +1582,220 @@ export function getNumericLoggingLevel(loggingLevel: string | undefined): number
         default:
             return 0;
     }
+}
+
+export function mergeOverlappingRanges(ranges: Range[]): Range[] {
+    // Fix any reversed ranges. Not sure if this is needed, but ensures the input is sanitized.
+    const mergedRanges: Range[] = ranges.map(range => {
+        if (range.start.line > range.end.line || (range.start.line === range.end.line && range.start.character > range.end.character)) {
+            return Range.create(range.end, range.start);
+        }
+        return range;
+    });
+
+    // Merge overlapping ranges.
+    mergedRanges.sort((a, b) => a.start.line - b.start.line || a.start.character - b.start.character);
+    let lastMergedIndex = 0; // Index to keep track of the last merged range
+    for (let currentIndex = 0; currentIndex < ranges.length; currentIndex++) {
+        const currentRange = ranges[currentIndex]; // No need for a shallow copy, since we're not modifying the ranges we haven't read yet.
+        let nextIndex = currentIndex + 1;
+        while (nextIndex < ranges.length) {
+            const nextRange = ranges[nextIndex];
+            // Check for non-overlapping ranges first
+            if (nextRange.start.line > currentRange.end.line ||
+                (nextRange.start.line === currentRange.end.line && nextRange.start.character > currentRange.end.character)) {
+                break;
+            }
+            // Otherwise, merge the overlapping ranges
+            currentRange.end = {
+                line: Math.max(currentRange.end.line, nextRange.end.line),
+                character: Math.max(currentRange.end.character, nextRange.end.character)
+            };
+            nextIndex++;
+        }
+        // Overwrite the array in-place
+        mergedRanges[lastMergedIndex] = currentRange;
+        lastMergedIndex++;
+        currentIndex = nextIndex - 1; // Skip the merged ranges
+    }
+    mergedRanges.length = lastMergedIndex;
+    return mergedRanges;
+}
+
+// Arg quoting utility functions, copied from VS Code with minor changes.
+
+export interface IShellQuotingOptions {
+    /**
+     * The character used to do character escaping.
+     */
+    escape?: string | {
+        escapeChar: string;
+        charsToEscape: string;
+    };
+
+    /**
+     * The character used for string quoting.
+     */
+    strong?: string;
+
+    /**
+     * The character used for weak quoting.
+     */
+    weak?: string;
+}
+
+export interface IQuotedString {
+    value: string;
+    quoting: 'escape' | 'strong' | 'weak';
+}
+
+export type CommandString = string | IQuotedString;
+
+export function buildShellCommandLine(originalCommand: CommandString, command: CommandString, args: CommandString[]): string {
+
+    let shellQuoteOptions: IShellQuotingOptions;
+    const isWindows: boolean = os.platform() === 'win32';
+    if (isWindows) {
+        shellQuoteOptions = {
+            strong: '"'
+        };
+    } else {
+        shellQuoteOptions = {
+            escape: {
+                escapeChar: '\\',
+                charsToEscape: ' "\''
+            },
+            strong: '\'',
+            weak: '"'
+        };
+    }
+
+    // TODO: Support launching with PowerShell
+    // For PowerShell:
+    //  {
+    //     escape: {
+    //         escapeChar: '`',
+    //         charsToEscape: ' "\'()'
+    //     },
+    //     strong: '\'',
+    //     weak: '"'
+    // },
+
+    function needsQuotes(value: string): boolean {
+        if (value.length >= 2) {
+            const first = value[0] === shellQuoteOptions.strong ? shellQuoteOptions.strong : value[0] === shellQuoteOptions.weak ? shellQuoteOptions.weak : undefined;
+            if (first === value[value.length - 1]) {
+                return false;
+            }
+        }
+        let quote: string | undefined;
+        for (let i = 0; i < value.length; i++) {
+            // We found the end quote.
+            const ch = value[i];
+            if (ch === quote) {
+                quote = undefined;
+            } else if (quote !== undefined) {
+                // skip the character. We are quoted.
+                continue;
+            } else if (ch === shellQuoteOptions.escape) {
+                // Skip the next character
+                i++;
+            } else if (ch === shellQuoteOptions.strong || ch === shellQuoteOptions.weak) {
+                quote = ch;
+            } else if (ch === ' ') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function quote(value: string, kind: 'escape' | 'strong' | 'weak'): [string, boolean] {
+        if (kind === "strong" && shellQuoteOptions.strong) {
+            return [shellQuoteOptions.strong + value + shellQuoteOptions.strong, true];
+        } else if (kind === "weak" && shellQuoteOptions.weak) {
+            return [shellQuoteOptions.weak + value + shellQuoteOptions.weak, true];
+        } else if (kind === "escape" && shellQuoteOptions.escape) {
+            if (isString(shellQuoteOptions.escape)) {
+                return [value.replace(/ /g, shellQuoteOptions.escape + ' '), true];
+            } else {
+                const buffer: string[] = [];
+                for (const ch of shellQuoteOptions.escape.charsToEscape) {
+                    buffer.push(`\\${ch}`);
+                }
+                const regexp: RegExp = new RegExp('[' + buffer.join(',') + ']', 'g');
+                const escapeChar = shellQuoteOptions.escape.escapeChar;
+                return [value.replace(regexp, (match) => escapeChar + match), true];
+            }
+        }
+        return [value, false];
+    }
+
+    function quoteIfNecessary(value: CommandString): [string, boolean] {
+        if (isString(value)) {
+            if (needsQuotes(value)) {
+                return quote(value, "strong");
+            } else {
+                return [value, false];
+            }
+        } else {
+            return quote(value.value, value.quoting);
+        }
+    }
+
+    // If we have no args and the command is a string then use the command to stay backwards compatible with the old command line
+    // model. To allow variable resolving with spaces we do continue if the resolved value is different than the original one
+    // and the resolved one needs quoting.
+    if ((!args || args.length === 0) && isString(command) && (command === originalCommand as string || needsQuotes(originalCommand as string))) {
+        return command;
+    }
+
+    const result: string[] = [];
+    let commandQuoted = false;
+    let argQuoted = false;
+    let value: string;
+    let quoted: boolean;
+    [value, quoted] = quoteIfNecessary(command);
+    result.push(value);
+    commandQuoted = quoted;
+    for (const arg of args) {
+        [value, quoted] = quoteIfNecessary(arg);
+        result.push(value);
+        argQuoted = argQuoted || quoted;
+    }
+
+    let commandLine = result.join(' ');
+    // There are special rules quoted command line in cmd.exe
+    if (isWindows)
+    {
+        commandLine = `chcp 65001>nul && ${commandLine}`;
+        if (commandQuoted && argQuoted) {
+            commandLine = '"' + commandLine + '"';
+        }
+        commandLine = `cmd /c ${commandLine}`;
+    }
+
+    return commandLine;
+}
+
+export function findExePathInArgs(args: CommandString[]): string | undefined {
+    const isWindows: boolean = os.platform() === 'win32';
+    let previousArg: string | undefined;
+
+    for (const arg of args) {
+        const argValue = isString(arg) ? arg : arg.value;
+        if (previousArg === '-o') {
+            return argValue;
+        }
+        if (isWindows && argValue.includes('.exe')) {
+            if (argValue.startsWith('/Fe')) {
+                return argValue.substring(3);
+            } else if (argValue.toLowerCase().startsWith('/out:')) {
+                return argValue.substring(5);
+            }
+        }
+
+        previousArg = argValue;
+    }
+
+    return undefined;
 }

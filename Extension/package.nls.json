@@ -66,6 +66,12 @@
             "Markdown text between `` should not be translated or localized (they represent literal text) and the capitalization, spacing, and punctuation (including the ``) should not be altered."
         ]
     },
+    "c_cpp.configuration.maxSymbolSearchResults.markdownDescription": {
+        "message": "The maximum number of results to show for 'Go to Symbol in Workspace'. The default is `5000`.",
+        "comment": [
+            "Markdown text between `` should not be translated or localized (they represent literal text) and the capitalization, spacing, and punctuation (including the ``) should not be altered."
+        ]
+    },
     "c_cpp.configuration.intelliSense.maxCachedProcesses.markdownDescription": {
         "message": "The maximum number of IntelliSense processes to keep running. The default of `null` (empty) uses value inherited from `#C_Cpp.maxCachedProcesses#`.",
         "comment": [
@@ -470,9 +476,9 @@
         ]
     },
     "c_cpp.configuration.autocomplete.markdownDescription": {
-        "message": "Controls the auto-completion provider. If `disabled` and you want word-based completion, you will also need to set `\"[cpp]\": {\"editor.wordBasedSuggestions\": true}` (and similarly for `c` and `cuda-cpp` languages).",
+        "message": "Controls the auto-completion provider. If `disabled` and you want word-based completion, you will also need to set `\"[cpp]\": {\"editor.wordBasedSuggestions\": <value>}` (and similarly for `c` and `cuda-cpp` languages).",
         "comment": [
-            "Markdown text between `` should not be translated or localized (they represent literal text) and the capitalization, spacing, and punctuation (including the ``) should not be altered."
+            "Markdown text between `` should not be translated or localized (they represent literal text) and the capitalization, spacing, and punctuation (including the ``) should not be altered -- except for text \"value\", which is a placeholder that should be translated."
         ]
     },
     "c_cpp.configuration.autocomplete.default.description": "Uses the active IntelliSense engine.",
@@ -928,6 +934,11 @@
     "c_cpp.taskDefinitions.name.description": "The name of the task.",
     "c_cpp.taskDefinitions.command.description": "The path to either a compiler or script that performs compilation.",
     "c_cpp.taskDefinitions.args.description": "Additional arguments to pass to the compiler or compilation script.",
+    "c_cpp.taskDefinitions.args.value.description": "The actual argument value.",
+    "c_cpp.taskDefinitions.args.quoting.description": "How the argument value should be quoted.",
+    "c_cpp.taskDefinitions.args.quoting.escape.description": "Escapes characters using the shell's escape character (e.g. \\ under bash).",
+    "c_cpp.taskDefinitions.args.quoting.strong.description": "Quotes the argument using the shell's strong quote character (e.g. ' under bash).",
+    "c_cpp.taskDefinitions.args.quoting.weak.description": "Quotes the argument using the shell's weak quote character (e.g. \" under bash).",
     "c_cpp.taskDefinitions.options.description": "Additional command options.",
     "c_cpp.taskDefinitions.options.cwd.description": "The current working directory of the executed program or script. If omitted Code's current workspace root is used.",
     "c_cpp.taskDefinitions.detail.description": "Additional details of the task.",
@@ -991,9 +1002,9 @@
     "c_cpp.walkthrough.run.debug.windows.description": "Open your C++ file and click on the play button in the top right corner of the editor, or press F5 when on the file. Select \"cl.exe - Build and debug active file\" to run with the debugger.",
     "c_cpp.walkthrough.run.debug.windows.altText": "Image showing a breakpoint in a C++ file, the f5 buttobn, and the run symbol in the top right",
     "c_cpp.walkthrough.customize.debugging.title": "Customize debugging",
-    "c_cpp.walkthrough.customize.debugging.mac.description": "You can customize your debug configuration (e.g. to pass arguments to your program at run time) by selecting \"Add Debug Configuration\" to the right of the play button. The custom debug configuration is saved in your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-linux#_debug-helloworldcpp)",
-    "c_cpp.walkthrough.customize.debugging.linux.description": "You can customize your debug configuration (e.g. to pass arguments to your program at run time) by selecting \"Add Debug Configuration\" to the right of the play button. The custom debug configuration is saved in your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-msvc#_debug-helloworldcpp)",
-    "c_cpp.walkthrough.customize.debugging.windows.description": "You can customize your debug configuration (e.g. to pass arguments to your program at run time) by selecting \"Add Debug Configuration\" to the right of the play button. The custom debug configuration is saved in your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-clang-mac#_debug-helloworldcpp)",
+    "c_cpp.walkthrough.customize.debugging.mac.description": "To customize your debug configuration, select the Explorer in the activity bar and open a folder that includes your C++ file. Open the C++ file, and select \"Add Debug Configuration\" to the right of the play button. The new debug configuration is saved to your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-linux#_debug-helloworldcpp)",
+    "c_cpp.walkthrough.customize.debugging.linux.description": "To customize your debug configuration, select the Explorer in the activity bar and open a folder that includes your C++ file. Open the C++ file, and select \"Add Debug Configuration\" to the right of the play button. The new debug configuration is saved to your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-msvc#_debug-helloworldcpp)",
+    "c_cpp.walkthrough.customize.debugging.windows.description": "To customize your debug configuration, select the Explorer in the activity bar and open a folder that includes your C++ file. Open the C++ file, and select \"Add Debug Configuration\" to the right of the play button. The new debug configuration is saved to your project's launch.json file. \n[Learn More](https://code.visualstudio.com/docs/cpp/config-clang-mac#_debug-helloworldcpp)",
     "c_cpp.walkthrough.customize.debugging.altText": "Image that shows Add Debug Configuration in the drop-down",
     "c_cpp.codeActions.refactor.inline.macro.title": "Inline macro",
     "c_cpp.codeActions.refactor.inline.macro.description": "Replace the macro invocation with the expanded code.",

@@ -88,7 +88,6 @@ export class CodeActionProvider implements vscode.CodeActionProvider {
             this.client.configuration.CurrentConfiguration?.compilerPathInCppPropertiesJson !== undefined ||
             !!this.client.configuration.CurrentConfiguration?.compileCommandsInCppPropertiesJson ||
             !!this.client.configuration.CurrentConfiguration?.configurationProviderInCppPropertiesJson;
-        const hasExperimentalFeatures: boolean = new CppSettings().experimentalFeatures ?? false;
 
         // Convert to vscode.CodeAction array
         let hasInlineMacro: boolean = false;
@@ -97,11 +96,16 @@ export class CodeActionProvider implements vscode.CodeActionProvider {
             let wsEdit: vscode.WorkspaceEdit | undefined;
             let codeActionKind: vscode.CodeActionKind = vscode.CodeActionKind.QuickFix;
             if (command.edit) {
-                // Inline macro feature.
-                codeActionKind = CodeActionProvider.inlineMacroKind;
                 wsEdit = new vscode.WorkspaceEdit();
+                if (command.command === 'C_Cpp.AddMissingInclude') {
+                    command.edit.newText += "\n";
+                }
                 wsEdit.replace(document.uri, makeVscodeRange(command.edit.range), command.edit.newText);
-                hasInlineMacro = true;
+                if (command.command === "edit") {
+                    // Inline macro feature.
+                    codeActionKind = CodeActionProvider.inlineMacroKind;
+                    hasInlineMacro = true;
+                }
             } else if (command.command === "C_Cpp.RemoveAllCodeAnalysisProblems" && command.uri !== undefined) {
                 // The "RemoveAll" message is sent for all code analysis squiggles.
                 const vsCodeRange: vscode.Range = makeVscodeRange(r);
@@ -211,17 +215,11 @@ export class CodeActionProvider implements vscode.CodeActionProvider {
                 }
             } else if (command.command === "C_Cpp.ExtractToFunction" ||
                 command.command === "C_Cpp.ExtractToMemberFunction") {
-                if (!hasExperimentalFeatures) {
-                    return;
-                }
                 codeActionKind = CodeActionProvider.extractToFunctionKind;
             } else if (command.command === "C_Cpp.ExtractToFreeFunction") {
                 // TODO: https://github.com/microsoft/vscode-cpptools/issues/11473 needs to be fixed.
                 return;
             } else if (command.command === "C_Cpp.ExpandSelection") {
-                if (!hasExperimentalFeatures) {
-                    return;
-                }
                 codeActionKind = CodeActionProvider.expandSelectionKind;
             }
             const vscodeCodeAction: vscode.CodeAction = {
